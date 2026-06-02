@@ -234,3 +234,152 @@ function totalHorasReporte(array $asistencias): float
 {
     return round(array_sum(array_column($asistencias, 'horas_trabajadas')), 2);
 }
+// ══════════════════════════════════════════════════
+//  GESTIÓN DE EMPLEADOS
+// ══════════════════════════════════════════════════
+
+/**
+ * Crea un nuevo empleado en la base de datos.
+ *
+ * @param PDO    $pdo
+ * @param array  $datos  Claves: documento, nombre, email, id_tip_user, password
+ * @return array ['ok' => bool, 'mensaje' => string]
+ */
+function crearEmpleado(PDO $pdo, array $datos): array
+{
+    try {
+        // Verificar que el documento no exista ya
+        $sqlCheck = "SELECT documento FROM user WHERE documento = ? LIMIT 1";
+        $stmtCheck = $pdo->prepare($sqlCheck);
+        $stmtCheck->execute([$datos['documento']]);
+        if ($stmtCheck->fetch()) {
+            return [
+                'ok'      => false,
+                'mensaje' => '⚠️ Ya existe un empleado con ese documento.'
+            ];
+        }
+
+        $sql = "INSERT INTO user (documento, nombre, email, id_tip_user, password, estado)
+                VALUES (?, ?, ?, ?, ?, 1)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            $datos['documento'],
+            trim($datos['nombre']),
+            trim($datos['email']),
+            $datos['id_tip_user'],
+            password_hash($datos['password'], PASSWORD_BCRYPT)
+        ]);
+
+        return [
+            'ok'      => true,
+            'mensaje' => '✅ Empleado creado correctamente.'
+        ];
+
+    } catch (PDOException $e) {
+        error_log('Error crearEmpleado: ' . $e->getMessage());
+        return [
+            'ok'      => false,
+            'mensaje' => '❌ Error interno al crear el empleado.'
+        ];
+    }
+}
+
+/**
+ * Edita los datos de un empleado existente.
+ * Solo actualiza los campos que vengan en $datos (nombre, email, id_tip_user, estado).
+ * Si se incluye 'password', la re-hashea y la actualiza también.
+ *
+ * @param PDO    $pdo
+ * @param string $documento  Documento del empleado a editar
+ * @param array  $datos      Campos a actualizar (nombre, email, id_tip_user, estado, password)
+ * @return array ['ok' => bool, 'mensaje' => string]
+ */
+function editarEmpleado(PDO $pdo, string $documento, array $datos): array
+{
+    try {
+        // Verificar que el empleado exista
+        $sqlCheck = "SELECT documento FROM user WHERE documento = ? LIMIT 1";
+        $stmtCheck = $pdo->prepare($sqlCheck);
+        $stmtCheck->execute([$documento]);
+        if (!$stmtCheck->fetch()) {
+            return [
+                'ok'      => false,
+                'mensaje' => '⚠️ No se encontró ningún empleado con ese documento.'
+            ];
+        }
+
+        $campos  = [];
+        $valores = [];
+
+        $permitidos = ['nombre', 'email', 'id_tip_user', 'estado'];
+        foreach ($permitidos as $campo) {
+            if (array_key_exists($campo, $datos)) {
+                $campos[]  = "{$campo} = ?";
+                $valores[] = is_string($datos[$campo]) ? trim($datos[$campo]) : $datos[$campo];
+            }
+        }
+
+        // Contraseña opcional
+        if (!empty($datos['password'])) {
+            $campos[]  = "password = ?";
+            $valores[] = password_hash($datos['password'], PASSWORD_BCRYPT);
+        }
+
+        if (empty($campos)) {
+            return [
+                'ok'      => false,
+                'mensaje' => '⚠️ No se enviaron campos válidos para actualizar.'
+            ];
+        }
+
+        $valores[] = $documento; // Para el WHERE
+        $sql = "UPDATE user SET " . implode(', ', $campos) . " WHERE documento = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($valores);
+
+        return [
+            'ok'      => true,
+            'mensaje' => '✅ Empleado actualizado correctamente.'
+        ];
+
+    } catch (PDOException $e) {
+        error_log('Error editarEmpleado: ' . $e->getMessage());
+        return [
+            'ok'      => false,
+            'mensaje' => '❌ Error interno al editar el empleado.'
+        ];
+    }
+}
+
+/**
+ * Busca un empleado por su documento.
+ * Devuelve sus datos básicos junto al nombre del tipo de usuario.
+ *
+ * @param PDO    $pdo
+ * @param string $documento
+ * @return array|null  Array con los datos del empleado, o null si no existe.
+ */
+function buscarEmpleadoPorDocumento(PDO $pdo, string $documento): ?array
+{
+    try {
+        $sql = "SELECT
+                    u.documento,
+                    u.nombre,
+                    u.email,
+                    u.estado,
+                    t.tip_user
+                FROM user u
+                INNER JOIN TYPE_USER t ON u.id_tip_user = t.id_tip_user
+                WHERE u.documento = ?
+                LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$documento]);
+        $empleado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $empleado ?: null;
+
+    } catch (PDOException $e) {
+        error_log('Error buscarEmpleadoPorDocumento: ' . $e->getMessage());
+        return null;
+    }
+}
