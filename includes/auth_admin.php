@@ -1,93 +1,49 @@
 <?php
-/**
- * auth_admin.php
- * Middleware de autenticación para el panel de administración.
- * Incluir al inicio de cada archivo protegido del admin.
- * 
- * Uso: require_once __DIR__ . '/../includes/auth_admin.php';
- */
-
-// Iniciar sesión si no está activa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+if (php_sapi_name() !== 'cli') {
+    die("Este script solo puede ejecutarse desde la terminal.\n");
 }
 
-// Tiempo máximo de inactividad: 30 minutos
-define('SESSION_TIMEOUT', 1800);
+require_once __DIR__ . '/../connection/connect.php';
 
-/**
- * Verifica si el admin tiene sesión activa y válida.
- * Si no, redirige al login y detiene la ejecución.
- */
-function verificarSesionAdmin(): void
-{
-    // ¿Está logueado como admin?
-    if (!isset($_SESSION['tip_user']) || strtolower($_SESSION['tip_user']) !== 'admin') {
-        header('Location: ' . obtenerRutaLogin());
-        exit;
+// validar parámetros
+if ($argc < 5) {
+    echo "Uso: php crear_admin.php <email> <password> <id_tip_user>\n";
+    exit(1);
+}
+
+$doc = $argv[1];
+$nombre = $argv[2];
+$email = $argv[3];
+$password = $argv[4];
+$id_tipo = $argv[5];
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    echo "Email inválido.\n";
+    exit(1);
+}
+
+if (strlen($password) < 8) {
+    echo "La contraseña debe tener mínimo 8 caracteres.\n";
+    exit(1);
+}
+
+try {
+    $db = new Database();
+    $pdo = $db->conectar();
+    //Verificar si ya existe
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM user WHERE email = ?");
+    $stmt->execute([$email]);
+    if ($stmt->fetchColumn() > 0) {
+        echo "El email ya está registrado.\n";
+        exit(1);
     }
+    $hash = password_hash($password, PASSWORD_ARGON2ID);
+    $insert = $pdo->prepare("INSERT INTO user (documento, nombre, email, password, id_tip_user) VALUES (?,?,?,?,?)");
+    $insert->execute([$doc, $nombre, $email, $hash, $id_tipo]);
 
-    // ¿La sesión sigue vigente (no expiró por inactividad)?
-    if (isset($_SESSION['login_time'])) {
-        $inactividad = time() - $_SESSION['login_time'];
-        if ($inactividad > SESSION_TIMEOUT) {
-            cerrarSesionAdmin();
-            header('Location: ' . obtenerRutaLogin() . '?motivo=timeout');
-            exit;
-        }
-    }
-
-    // Renovar el tiempo de actividad en cada petición
-    $_SESSION['login_time'] = time();
+    echo "Administrador creado exitosamente.\n";
+    echo "Email: $email | ID Tipo: $id_tipo\n";
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
 }
-
-/**
- * Destruye completamente la sesión del admin.
- */
-function cerrarSesionAdmin(): void
-{
-    $_SESSION = [];
-
-    if (ini_get('session.use_cookies')) {
-        $params = session_get_cookie_params();
-        setcookie(
-            session_name(),
-            '',
-            time() - 42000,
-            $params['path'],
-            $params['domain'],
-            $params['secure'],
-            $params['httponly']
-        );
-    }
-
-    session_destroy();
-}
-
-/**
- * Devuelve la ruta correcta al login según desde dónde se llame.
- * Funciona tanto desde /admin/ como desde la raíz.
- */
-function obtenerRutaLogin(): string
-{
-    // Detectar si estamos dentro de /admin/
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    if (strpos($script, '/admin/') !== false) {
-        return '../login.php';
-    }
-    return 'login.php';
-}
-
-/**
- * Obtiene un dato de sesión de forma segura.
- * 
- * @param string $clave   Clave de sesión (ej: 'nombre', 'documento')
- * @param mixed  $defecto Valor si no existe
- */
-function sesionAdmin(string $clave, mixed $defecto = ''): mixed
-{
-    return $_SESSION[$clave] ?? $defecto;
-}
-
-// ─── Ejecutar la verificación automáticamente al incluir el archivo ───
-verificarSesionAdmin();
