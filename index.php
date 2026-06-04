@@ -83,15 +83,10 @@ if (!$pdo) {
                             class="btn btn-success w-100">
                             Registrar Asistencia
                         </button>
-
                     </form>
-
                 </div>
-
             </div>
-
         </div>
-
     </div>
-
 </div>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
