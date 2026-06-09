@@ -230,8 +230,8 @@ if ($accion === "listar") {
                         <div class="mb-4">
                             <label class="form-label fw-semibold">Estado Inicial</label>
                             <select name="estado" class="form-select">
-                                <option value="1">Activo</option>
-                                <option value="0">Inactivo</option>
+                                <option value="1">-Activo</option>
+                                <option value="0">-Inactivo</option>
                             </select>
                         </div>
                         <button type="submit" name="crear" class="btn btn-success fw-bold px-4"><i class="fa-solid fa-floppy-disk me-1"></i> Guardar</button>
